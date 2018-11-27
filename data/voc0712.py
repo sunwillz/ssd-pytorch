@@ -256,6 +256,3 @@ class VOCDetection(data.Dataset):
 
         self.write_voc_results_file(all_boxes)
         self.do_python_eval(output_dir)
-
-
-

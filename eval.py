@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data.util import Timer
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, COCODetection, BaseTransform, COCO_ROOT
+from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, COCODetection, BaseTransform, COCO_ROOT, COCOAnnotationTransform
 from data import VOC_CLASSES
 import torch.utils.data as data
 
@@ -42,7 +42,7 @@ parser.add_argument('-d', '--dataset', default='VOC',
                     help='VOC or COCO version')
 parser.add_argument('--size', default=300, type=int,
                     help='300 or 512 input size')
-parser.add_argument('--top_k', default=10, type=int,
+parser.add_argument('--top_k', default=100, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
@@ -77,12 +77,13 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k, thresh=0.05):
 
     all_boxes = [[[] for _ in range(num_images)]
                  for _ in range(num_classes)]
-    _t = {'im_detect': Timer(), 'misc': Timer()}
+    _t = {'im_detect': Timer(), 'misc': Timer(), 'load_data': Timer()}
     det_file = os.path.join(save_folder, 'detections.pkl')
 
     for i in range(num_images):
+        _t['load_data'].tic()
         im, gt, h, w = dataset.pull_item(i)
-
+        load_data_time = _t['load_data'].toc(average=False)
         x = Variable(im.unsqueeze(0))
         if cuda:
             x = x.cuda()
@@ -104,17 +105,24 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k, thresh=0.05):
                 continue
             boxes = dets[:, 1:]
             boxes[:, 0] *= w
-            boxes[:, 2] *= w
             boxes[:, 1] *= h
+            boxes[:, 2] *= w
             boxes[:, 3] *= h
             scores = dets[:, 0].cpu().numpy()
             cls_dets = np.hstack((boxes.cpu().numpy(),
                                   scores[:, np.newaxis])).astype(np.float32,
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
+        if top_k > 0:
+            image_scores = np.hstack([all_boxes[j][i][:, -1] for j in range(1, num_classes)])
+            if len(image_scores) > top_k:
+                image_thresh = np.sort(image_scores)[-top_k]
+                for j in range(1, num_classes):
+                    keep = np.where(all_boxes[j][i][:, -1] >= image_thresh)[0]
+                    all_boxes[j][i] = all_boxes[j][i][keep, :]
 
-        print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
-                                                    num_images, detect_time))
+        print('im_detect: {:d}/{:d} {:.3f}s {:.3f}s'.format(i + 1,
+                                                    num_images, detect_time, load_data_time))
 
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
@@ -128,10 +136,11 @@ if __name__ == '__main__':
     img_dim = (300, 512)[args.size == '512']
     num_classes = (21, 81)[args.dataset == 'COCO']
     net = build_ssd('test', img_dim, num_classes)            # initialize SSD
+    print(net)
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
-    print(net)
+
     dataset_mean = (104, 117, 123)
     # load data
     if args.dataset == 'VOC':
@@ -139,7 +148,9 @@ if __name__ == '__main__':
                                BaseTransform(img_dim, dataset_mean),
                                VOCAnnotationTransform())
     elif args.dataset == 'COCO':
-        dataset = COCODetection(COCO_ROOT, [('2017', 'val')], None)
+        dataset = COCODetection(COCO_ROOT, [('2017', 'val')],
+                                BaseTransform(img_dim, dataset_mean),
+                                COCOAnnotationTransform())
     else:
         print('Only VOC and COCO dataset are supported now!')
 

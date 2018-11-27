@@ -30,8 +30,10 @@ parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth',
                     help='Pretrained base model')
-parser.add_argument('--batch_size', default=64, type=int,
+parser.add_argument('--batch_size', default=32, type=int,
                     help='Batch size for training')
+parser.add_argument('--img_dim', default=300, type=int,
+                    help='Size of the input image, only support 300 or 512')
 parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
@@ -54,6 +56,7 @@ parser.add_argument('--pretrained_model', default='weights/',
                     help='Directory for saving pretrained model')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
+
 args = parser.parse_args()
 
 
@@ -79,20 +82,22 @@ def train():
             print("WARNING: Using default COCO dataset_root because " +
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
-        cfg = coco
+        cfg = (COCO_300, COCO_512)[args.img_dim == 512]
         dataset = COCODetection(root=args.dataset_root, image_sets=[("2017", "train")],
                                 transform=SSDAugmentation(cfg['min_dim'], MEANS),
                                 target_transform=COCOAnnotationTransform())
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             parser.error('Must specify dataset if specifying dataset_root')
-        cfg = voc
+
+        cfg = (VOC_300, VOC_512)[args.img_dim == 512]
         dataset = VOCDetection(root=args.dataset_root,
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
 
     if not os.path.exists(args.save_folder):
         os.makedirs(args.save_folder)
+
     if args.visdom:
         import visdom
         viz = visdom.Visdom()
@@ -157,6 +162,7 @@ def train():
     for iteration in range(args.start_iter, cfg['max_iter']):
         if iteration != 0 and (iteration % epoch_size == 0):
             epoch += 1
+        if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
             update_vis_plot(viz, epoch, loc_loss, conf_loss, epoch_plot, None,
                             'append', epoch_size)
             # reset epoch loss counters
@@ -205,9 +211,8 @@ def train():
         if iteration != 0 and iteration % 5000 == 0:
             print('Saving state, iter:', iteration)
             ckpt_path = os.path.join(args.save_folder,
-                                     'ssd300_' + str(args.dataset) + '_' + str(iteration) + '.pth')
+                                     'ssd' + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(iteration) + '.pth')
             torch.save(ssd_net.state_dict(), ckpt_path)
-            # torch.save(ssd_net.state_dict(), 'weights/ssd300_' + repr(args.dataset) + '_' +repr(iteration) + '.pth')
     torch.save(ssd_net.state_dict(),
                os.path.join(args.save_folder + 'model.pth'))
 

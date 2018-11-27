@@ -17,7 +17,7 @@ COCO_ROOT = osp.join(HOME, 'data/coco/')
 COCO_API = 'PythonAPI'
 INSTANCES_SET = 'instances_{}.json'
 COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-                'train', 'truck', 'boat', 'traffic light', 'fire', 'hydrant',
+                'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
                 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog',
                 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
                 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie',
@@ -28,7 +28,7 @@ COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
                 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
                 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
                 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
-                'keyboard', 'cell phone', 'microwave oven', 'toaster', 'sink',
+                'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
                 'refrigerator', 'book', 'clock', 'vase', 'scissors',
                 'teddy bear', 'hair drier', 'toothbrush')
 
@@ -66,7 +66,7 @@ class COCOAnnotationTransform(object):
                 bbox = obj['bbox']
                 bbox[2] += bbox[0]
                 bbox[3] += bbox[1]
-                label_idx = self.label_map[obj['category_id']] - 1
+                label_idx = self.label_map[obj['category_id']]
                 final_box = list(np.array(bbox) / scale)
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
@@ -107,8 +107,8 @@ class COCODetection(data.Dataset):
             self.coco_name = coco_name
             cats = _COCO.loadCats(_COCO.getCatIds())
             self._classes = tuple(['__background__'] + [c['name'] for c in cats])
-            self.num_clsses = len(self._classes)
-            self._class_to_ind = dict(zip(self._classes, range(self.num_clsses)))
+            self.num_classes = len(self._classes)
+            self._class_to_ind = dict(zip(self._classes, range(self.num_classes)))
             self._class_to_coco_cat_id = dict(zip([c['name'] for c in cats],
                                                   _COCO.getCatIds()))
             indexes = _COCO.getImgIds()
@@ -222,7 +222,24 @@ class COCODetection(data.Dataset):
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
             img = img[:, :, (2, 1, 0)]
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+
         return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float()
+
+    def pull_item(self, index):
+        img_id = self.img_ids[index]
+        target = self._COCO.imgToAnns[img_id]
+        path = self.image_path_from_index(self.coco_name, img_id)
+        img = cv2.imread(path, cv2.IMREAD_COLOR)
+        height, width, _ = img.shape
+
+        if self.target_transform is not None:
+            target = self.target_transform(target, width, height)
+        if self.transform is not None:
+            target = np.array(target)
+            img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
+            img = img[:, :, (2, 1, 0)]
+            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
 
     def __len__(self):
         return len(self.img_ids)
@@ -327,7 +344,7 @@ class COCODetection(data.Dataset):
 
     def _coco_results_one_category(self, boxes, cat_id):
         results = []
-        for im_ind, index in enumerate(self.image_indexes):
+        for im_ind, index in enumerate(self.img_ids):
             dets = boxes[im_ind].astype(np.float)
             if dets == []:
                 continue
