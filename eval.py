@@ -6,28 +6,21 @@
 
 from __future__ import print_function
 import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data.util import Timer
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, COCODetection, BaseTransform, COCO_ROOT, COCOAnnotationTransform
-from data import VOC_CLASSES
-import torch.utils.data as data
-
+from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, COCODetection, BaseTransform, COCO_ROOT, \
+    COCOAnnotationTransform, VOC_300, VOC_512, COCO_300, COCO_512
 from ssd import build_ssd
-
-import sys
+from layers.box_utils import nms
 import os
-import time
 import argparse
 import numpy as np
 import pickle
-import cv2
 
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
-
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
@@ -69,7 +62,7 @@ else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
 
-def test_net(save_folder, net, cuda, dataset, transform, top_k, thresh=0.05):
+def test_net(save_folder, net, cuda, dataset, top_k, thresh=0.05):
     num_images = len(dataset)
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
@@ -110,9 +103,9 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k, thresh=0.05):
             boxes[:, 3] *= h
             scores = dets[:, 0].cpu().numpy()
             cls_dets = np.hstack((boxes.cpu().numpy(),
-                                  scores[:, np.newaxis])).astype(np.float32,
-                                                                 copy=False)
-            all_boxes[j][i] = cls_dets
+                                  scores[:, np.newaxis])).astype(np.float32, copy=False)
+            keep, _ = nms(boxes, scores)
+            all_boxes[j][i] = cls_dets[keep, :]
         if top_k > 0:
             image_scores = np.hstack([all_boxes[j][i][:, -1] for j in range(1, num_classes)])
             if len(image_scores) > top_k:
@@ -135,30 +128,30 @@ if __name__ == '__main__':
     # load net
     img_dim = (300, 512)[args.size == '512']
     num_classes = (21, 81)[args.dataset == 'COCO']
-    net = build_ssd('test', img_dim, num_classes)            # initialize SSD
-    print(net)
-    net.load_state_dict(torch.load(args.trained_model))
-    net.eval()
-    print('Finished loading model!')
-
     dataset_mean = (104, 117, 123)
     # load data
     if args.dataset == 'VOC':
+        cfg = (VOC_300, VOC_512)[args.size == 512]
         dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
                                BaseTransform(img_dim, dataset_mean),
                                VOCAnnotationTransform())
     elif args.dataset == 'COCO':
+        cfg = (COCO_300, COCO_512)[args.size == 512]
         dataset = COCODetection(COCO_ROOT, [('2017', 'val')],
                                 BaseTransform(img_dim, dataset_mean),
                                 COCOAnnotationTransform())
     else:
         print('Only VOC and COCO dataset are supported now!')
+    net = build_ssd(cfg, 'test', img_dim, num_classes)            # initialize SSD
+    print(net)
+    net.load_state_dict(torch.load(args.trained_model))
+    net.eval()
+    print('Finished loading model!')
 
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
 
     # evaluation
-    test_net(args.save_folder, net, args.cuda, dataset,
-             BaseTransform(net.size, dataset_mean), args.top_k,
+    test_net(args.save_folder, net, args.cuda, dataset, args.top_k,
              thresh=args.confidence_threshold)

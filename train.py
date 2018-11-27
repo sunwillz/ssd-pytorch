@@ -23,7 +23,6 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
-train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
@@ -58,7 +57,6 @@ parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 
 args = parser.parse_args()
-
 
 if torch.cuda.is_available():
     if args.cuda:
@@ -102,7 +100,7 @@ def train():
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    ssd_net = build_ssd(cfg, 'train', cfg['min_dim'], cfg['num_classes'])
     net = ssd_net
     print(net)
     if args.cuda:
@@ -129,7 +127,7 @@ def train():
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
+    criterion = MultiBoxLoss(cfg, 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
 
     net.train()
@@ -188,6 +186,7 @@ def train():
             targets = [Variable(ann) for ann in targets]
         # forward
         t0 = time.time()
+        assert images.size(2) == args.img_dim and images.size(3) == args.img_dim
         out = net(images)
         # backprop
         optimizer.zero_grad()

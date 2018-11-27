@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from data import COCO_300 as cfg
 from ..box_utils import match, log_sum_exp
 
 
@@ -30,12 +29,12 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
 
-    def __init__(self, num_classes, overlap_thresh, prior_for_matching,
+    def __init__(self, cfg, overlap_thresh, prior_for_matching,
                  bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
                  use_gpu=True):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
-        self.num_classes = num_classes
+        self.num_classes = cfg['num_classes']
         self.threshold = overlap_thresh
         self.background_label = bkg_label
         self.encode_target = encode_target
@@ -50,22 +49,22 @@ class MultiBoxLoss(nn.Module):
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
             and prior boxes from SSD net.
-                conf shape: torch.size(batch_size,num_priors,num_classes)
-                loc shape: torch.size(batch_size,num_priors,4)
-                priors shape: torch.size(num_priors,4)
+                conf shape: torch.size(batch_size,num_priors,num_classes) (N, 8732, 81)
+                loc shape: torch.size(batch_size,num_priors,4)  (N, 8732, 4)
+                priors shape: torch.size(num_priors,4) (8732, 4)
 
             targets (tensor): Ground truth boxes and labels for a batch,
-                shape: [batch_size,num_objs,5] (last idx is the label).
+                shape: [batch_size, num_objs, 5] (last idx is the label).
         """
         loc_data, conf_data, priors = predictions
-        num = loc_data.size(0)
+        num = loc_data.size(0)  # N
         priors = priors[:loc_data.size(1), :]
-        num_priors = (priors.size(0))
-        num_classes = self.num_classes
+        num_priors = (priors.size(0)) # 8732
+        # num_classes = self.num_classes # 81
 
         # match priors (default boxes) and ground truth boxes
-        loc_t = torch.Tensor(num, num_priors, 4)
-        conf_t = torch.LongTensor(num, num_priors)
+        loc_t = torch.Tensor(num, num_priors, 4)  # (N, 8732, 4)
+        conf_t = torch.LongTensor(num, num_priors) # (N, 8732)
         for idx in range(num):
             truths = targets[idx][:, :-1].data
             labels = targets[idx][:, -1].data
@@ -79,12 +78,12 @@ class MultiBoxLoss(nn.Module):
         loc_t = Variable(loc_t, requires_grad=False)
         conf_t = Variable(conf_t, requires_grad=False)
 
-        pos = conf_t > 0
-        num_pos = pos.sum(dim=1, keepdim=True)
+        pos = conf_t > 0 # pos means matched boxes
+        # num_pos = pos.sum(dim=1, keepdim=True)
 
         # Localization Loss (Smooth L1)
         # Shape: [batch,num_priors,4]
-        pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)
+        pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data) # (N, 8732, 4)
         loc_p = loc_data[pos_idx].view(-1, 4)
         loc_t = loc_t[pos_idx].view(-1, 4)
         loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)

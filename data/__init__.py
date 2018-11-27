@@ -4,7 +4,6 @@ from .coco import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROO
 from .config import *
 import torch
 import cv2
-import numpy as np
 from.util import *
 
 
