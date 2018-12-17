@@ -50,7 +50,7 @@ class COCOAnnotationTransform(object):
     def __init__(self):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
 
-    def __call__(self, target, width, height):
+    def __call__(self, targets, width, height):
         """
         Args:
             target (dict): COCO target json annotation as a python dict
@@ -61,7 +61,7 @@ class COCOAnnotationTransform(object):
         """
         scale = np.array([width, height, width, height])
         res = []
-        for obj in target:
+        for obj in targets:
             if 'bbox' in obj:
                 bbox = obj['bbox']
                 bbox[2] += bbox[0]
@@ -74,6 +74,14 @@ class COCOAnnotationTransform(object):
                 print("no bbox problem!")
 
         return res  # [[xmin, ymin, xmax, ymax, label_idx], ... ]
+
+    def aux_label_trans(self, targets):
+        res = [0] * (len(COCO_CLASSES) + 1)
+        for obj in targets:
+            if 'bbox' in obj:
+                cls = self.label_map[obj['category_id']]
+                res[cls+1] = 1
+        return np.array(res)
 
 
 class COCODetection(data.Dataset):
@@ -88,20 +96,24 @@ class COCODetection(data.Dataset):
     """
 
     def __init__(self, root, image_sets=[("2017", "train"),], transform=None,
-                 target_transform=None, dataset_name='MS COCO'):
+                 target_transform=None, aux=False, dataset_name='MS COCO'):
         sys.path.append(osp.join(root, COCO_API))
         self.root = root
         self.cache_path = osp.join(root, 'cache')
         self.name = dataset_name
+        self.aux = aux
         # self.img_paths = list()
         # self.annotations = list()
         # self.anno_sets = list()
         self.transform = transform
         self.target_transform = target_transform
         self.coco_name = image_sets[0][1]+image_sets[0][0]
-        self.coco = COCO(self.get_anno_filename(self.coco_name))
+        self.coco = COCO(self.get_anno_filename(self.coco_name, image_sets[0][1]))
         cats = self.coco.loadCats(self.coco.getCatIds())
-        self.img_ids = [i for i in self.coco.getImgIds() if len(self.coco.imgToAnns[i]) > 0]
+        if 'test' in image_sets[0][1]:
+            self.img_ids = self.coco.getImgIds()
+        else:
+            self.img_ids = [i for i in self.coco.getImgIds() if len(self.coco.imgToAnns[i]) > 0]
         self.classes_name = tuple(['__background__'] + [c['name'] for c in cats])
         self.num_classes = len(self.classes_name)
         self.class_to_ind = dict(zip(self.classes_name, range(self.num_classes)))
@@ -129,19 +141,22 @@ class COCODetection(data.Dataset):
         #     else:
         #         self.annotations += self._load_coco_annotations(coco_name, n_indexes, _COCO)
 
-    def get_anno_filename(self, name):
-        prefix = 'instances'
-        return osp.join(self.root, 'annotations', prefix + '_' + name + '.json')
+    def get_anno_filename(self, name, split):
+        if split == 'val' or split == 'train':
+            prefix = 'instances'
+            return osp.join(self.root, 'annotations', prefix + '_' + name + '.json')
+        elif split == 'test-dev':
+            return osp.join(self.root, 'annotations', 'image_info_' + name + '.json')
 
     def image_path_from_index(self, name, index):
         """
         Construct an image path from the image's "index" identifier.
         """
         # Example image path for index=119993:
-        #   images/train2014/COCO_train2014_000000119993.jpg
+        #   images/train2014/000000119993.jpg
         file_name = (str(index).zfill(12) + '.jpg')
         image_path = os.path.join(self.root, 'images',
-                                  name, file_name)
+                                 'test2017' if 'test' in name else name, file_name)
         assert os.path.exists(image_path), \
             'Path does not exist: {}'.format(image_path)
 
@@ -217,21 +232,27 @@ class COCODetection(data.Dataset):
         # assert len(self.img_paths) == len(self.img_ids)
         # target = self.anno_sets[index]
         ## method 2
-        img_id = self.img_ids[index]
-        target = self.coco.imgToAnns[img_id]
-        path = self.image_path_from_index(self.coco_name, img_id)
-        img = cv2.imread(path, cv2.IMREAD_COLOR)
-        height, width, _ = img.shape
-
-        if self.target_transform is not None:
-            target = self.target_transform(target, width, height)
-        if self.transform is not None:
-            target = np.array(target)
-            img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            img = img[:, :, (2, 1, 0)]
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-
-        return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float()
+        # img_id = self.img_ids[index]
+        # target = self.coco.imgToAnns[img_id]
+        # path = self.image_path_from_index(self.coco_name, img_id)
+        # img = cv2.imread(path, cv2.IMREAD_COLOR)
+        # height, width, _ = img.shape
+        #
+        # if self.target_transform is not None:
+        #     target = self.target_transform(target, width, height)
+        # if self.transform is not None:
+        #     target = np.array(target)
+        #     img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
+        #     img = img[:, :, (2, 1, 0)]
+        #     target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+        #
+        # return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float()
+        if self.aux:
+            img, gt, h, w, aux_label = self.pull_item(index)
+            return img, gt, aux_label
+        else:
+            img, gt, h, w = self.pull_item(index)
+            return img, gt
 
     def pull_item(self, index):
         img_id = self.img_ids[index]
@@ -241,13 +262,21 @@ class COCODetection(data.Dataset):
         height, width, _ = img.shape
 
         if self.target_transform is not None:
+            if self.aux:
+                aux_label = self.target_transform.aux_label_trans(target)
             target = self.target_transform(target, width, height)
+
         if self.transform is not None:
             target = np.array(target)
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
             img = img[:, :, (2, 1, 0)]
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
+        if self.aux:
+            return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float(), \
+                   height, width, aux_label
+        else:
+            return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float(),\
+                   height, width
 
     def __len__(self):
         return len(self.img_ids)
@@ -261,10 +290,16 @@ class COCODetection(data.Dataset):
         Argument:
             index (int): index of img to show
         Return:
-            cv2 img
+            cv2 img, height, width
         """
-        img_id = self.ids[index]
-        return cv2.imread(img_id, cv2.IMREAD_COLOR)
+        img_id = self.img_ids[index]
+        path = self.image_path_from_index(self.coco_name, img_id)
+        img = cv2.imread(path, cv2.IMREAD_COLOR)
+        height, width, _ = img.shape
+        if self.transform:
+            img, _, _ = self.transform(img)
+            img = img[:, :, (2, 1, 0)]
+        return torch.from_numpy(img).permute(2, 0, 1).float(), height, width
 
     def pull_anno(self, index):
         """Returns the original annotation of image at index
@@ -326,7 +361,7 @@ class COCODetection(data.Dataset):
         print('~~~~ Mean and per-category AP @ IoU=[{:.2f},{:.2f}] '
               '~~~~'.format(IoU_lo_thresh, IoU_hi_thresh))
         print('{:.1f}'.format(100 * ap_default))
-        for cls_ind, cls in enumerate(self._classes):
+        for cls_ind, cls in enumerate(self.classes_name):
             if cls == '__background__':
                 continue
             # minus 1 because of __background__
@@ -393,3 +428,6 @@ class COCODetection(data.Dataset):
         if self.coco_name.find('test') == -1:
             self._do_detection_eval(res_file, output_dir)
 
+    def evaluate(self, output_dir):
+        res_file = os.path.join(output_dir, 'detections_' + self.coco_name + '_results.json')
+        self._do_detection_eval(res_file, output_dir)

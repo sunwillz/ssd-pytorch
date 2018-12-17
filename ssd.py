@@ -58,7 +58,7 @@ class SSD(nn.Module):
                 confidence score, and corresponding location predictions for
                 each object detected. Shape: [batch,topk,7]
 
-            train:
+            train_FEDet:
                 list of concat outputs from:
                     1: confidence layers, Shape: [batch*num_priors,num_classes]
                     2: localization layers, Shape: [batch,num_priors*4]
@@ -206,3 +206,4 @@ def build_ssd(cfg, phase, size=300, num_classes=21):
                                      add_extras(extras[str(size)], size, 1024),
                                      mbox[str(size)], num_classes)
     return SSD(cfg, phase, size, base_, extras_, head_, num_classes)
+

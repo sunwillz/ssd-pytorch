@@ -71,6 +71,14 @@ class VOCAnnotationTransform(object):
 
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
+    def aux_label_trans(self, targets):
+        res = [0] * (len(VOC_CLASSES) + 1)
+        objs = targets.findall('object')
+        for obj in objs:
+            cls = self.class_to_ind[obj.find('name').text.lower().strip()]
+            res[cls+1] = 1
+        return np.array(res)
+
 
 class VOCDetection(data.Dataset):
     """VOC Detection Dataset Object
@@ -91,13 +99,14 @@ class VOCDetection(data.Dataset):
 
     def __init__(self, root,
                  image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
-                 transform=None, target_transform=VOCAnnotationTransform(),
-                 dataset_name='VOC07'):
+                 transform=None, target_transform=VOCAnnotationTransform(), aux=False,
+                 dataset_name='VOC0712'):
         self.root = root
         self.image_set = image_sets
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
+        self.aux = aux
         self._annopath = osp.join('%s', 'Annotations', '%s.xml')
         self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')
         self.imgsetpath = osp.join(VOC_ROOT, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
@@ -111,9 +120,12 @@ class VOCDetection(data.Dataset):
                 self.ids.append((rootpath, line.strip()))
 
     def __getitem__(self, index):
-        im, gt, h, w = self.pull_item(index)
-
-        return im, gt
+        if self.aux:
+            im, gt, h, w, aux_label = self.pull_item(index)
+            return im, gt, aux_label
+        else:
+            im, gt, h, w = self.pull_item(index)
+            return im, gt
 
     def __len__(self):
         return len(self.ids)
@@ -126,6 +138,8 @@ class VOCDetection(data.Dataset):
         height, width, channels = img.shape
 
         if self.target_transform is not None:
+            if self.aux:
+                aux_label = self.target_transform.aux_label_trans(target)
             target = self.target_transform(target, width, height)
 
         if self.transform is not None:
@@ -135,8 +149,19 @@ class VOCDetection(data.Dataset):
             img = img[:, :, (2, 1, 0)]
             # img = img.transpose(2, 0, 1)
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
+        if self.aux:
+            return torch.from_numpy(img).permute(2, 0, 1), target, height, width, aux_label
+        else:
+            return torch.from_numpy(img).permute(2, 0, 1), target, height, width
         # return torch.from_numpy(img), target, height, width
+
+    def aux_target(self, index):
+        img_id = self.ids[index]
+        target = ET.parse(self._annopath % img_id).getroot()
+        if self.target_transform is not None:
+            aux = self.target_transform.aux_label_trans(target)
+
+        return aux
 
     def pull_image(self, index):
         """Returns the original image object at index in PIL form
@@ -255,4 +280,7 @@ class VOCDetection(data.Dataset):
     def evaluate_detections(self, all_boxes, output_dir=None):
 
         self.write_voc_results_file(all_boxes)
+        self.do_python_eval(output_dir)
+
+    def evaluate(self, output_dir=None):
         self.do_python_eval(output_dir)

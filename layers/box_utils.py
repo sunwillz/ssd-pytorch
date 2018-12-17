@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import torch
+import numpy as np
 
 
 def point_form(boxes):
@@ -169,6 +170,43 @@ def log_sum_exp(x):
     return torch.log(torch.sum(torch.exp(x-x_max), 1, keepdim=True)) + x_max
 
 
+def nms2(boxes, scores, thresh=0.5):
+    keep_id = list(np.argsort(scores)[::-1])
+    b1_id = 0
+    keep_num = len(keep_id)
+    while b1_id < keep_num:
+        b2_id = b1_id+1
+        while b2_id < keep_num:
+            b1 = boxes[keep_id[b1_id], :]
+            b2 = boxes[keep_id[b2_id], :]
+            if(iof(b1, b2)) > thresh:
+                keep_id.pop(b2_id)
+                keep_num -= 1
+            else:
+                b2_id += 1
+        b1_id += 1
+
+    return keep_id
+
+
+def iof(b1, b2):
+    il = max(b1[0], b2[0])
+    it = max(b1[1], b2[1])
+    ir = min(b1[2], b2[2])
+    ib = min(b1[3], b2[3])
+
+    iw = ir-il
+    ih = ib-it
+
+    if iw > 0 and ih > 0:
+        inter = iw * ih
+    else:
+        inter = 0
+    b1_area = (b1[2]-b1[0]) * (b1[3] - b1[1])
+
+    return float(inter / b1_area)
+
+
 # Original author: Francisco Massa:
 # https://github.com/fmassa/object-detection.torch
 # Ported to PyTorch by Max deGroot (02/01/2017)
@@ -186,7 +224,7 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
 
     keep = scores.new(scores.size(0)).zero_().long()
     if boxes.numel() == 0:
-        return keep
+        return keep, 0
     x1 = boxes[:, 0]
     y1 = boxes[:, 1]
     x2 = boxes[:, 2]

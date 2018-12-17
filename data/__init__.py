@@ -42,3 +42,15 @@ class BaseTransform:
 
     def __call__(self, image, boxes=None, labels=None):
         return base_transform(image, self.size, self.mean), boxes, labels
+
+
+def detection_collate_fedet(batch):
+    targets = []
+    imgs = []
+    aux_labels = []
+    for sample in batch:
+        imgs.append(sample[0])
+        targets.append(torch.FloatTensor(sample[1]))
+        aux_labels.append(torch.FloatTensor(sample[2]))
+    return torch.stack(imgs, 0), targets, torch.stack(aux_labels, 0)
+
