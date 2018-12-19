@@ -145,15 +145,11 @@ class VOCDetection(data.Dataset):
         if self.transform is not None:
             target = np.array(target)
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            # to rgb
-            img = img[:, :, (2, 1, 0)]
-            # img = img.transpose(2, 0, 1)
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         if self.aux:
-            return torch.from_numpy(img).permute(2, 0, 1), target, height, width, aux_label
+            return img, target, height, width, aux_label
         else:
-            return torch.from_numpy(img).permute(2, 0, 1), target, height, width
-        # return torch.from_numpy(img), target, height, width
+            return img, target, height, width
 
     def aux_target(self, index):
         img_id = self.ids[index]
@@ -175,7 +171,14 @@ class VOCDetection(data.Dataset):
             PIL img
         """
         img_id = self.ids[index]
-        return cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)
+
+        img = cv2.imread(self._imgpath % img_id)
+        height, width, channels = img.shape
+        if self.transform:
+            img, _, _ = self.transform(img)
+            img = img[:, :, (2, 1, 0)] # to RGB layout
+        img = torch.from_numpy(img).permute(2, 0, 1).float() # to torch tensor, CxHxW
+        return img, height, width
 
     def pull_anno(self, index):
         """Returns the original annotation of image at index

@@ -79,9 +79,9 @@ def test_net(save_folder, net, cuda, dataset, top_k, thresh=0.05):
 
     for i in range(num_images):
         _t['load_data'].tic()
-        im, gt, h, w = dataset.pull_item(i)
+        img, h, w = dataset.pull_image(i)
         load_data_time = _t['load_data'].toc(average=False)
-        x = Variable(im.unsqueeze(0))
+        x = Variable(img.unsqueeze(0))
         scale = torch.Tensor([w, h, w, h])
         if cuda:
             x = x.cuda()
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     # load net
     img_dim = (300, 512)[args.size == 512]
     num_classes = (21, 81)[args.dataset == 'COCO']
-    dataset_mean = (104, 117, 123)
+    dataset_mean = (104, 117, 123) # BGR layout
     if img_dim == 300:
         cfg = ((SSD_VOC_300, FEDet_VOC_300), (SSD_COCO_300, FEDet_COCO_300))[args.dataset == 'COCO'][args.arch == 'FEDet']
     else:

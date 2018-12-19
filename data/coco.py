@@ -11,7 +11,6 @@ import pickle
 import json
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from pycocotools import mask as COOCMask
 
 COCO_ROOT = osp.join(HOME, 'data/coco/')
 COCO_API = 'PythonAPI'
@@ -243,10 +242,9 @@ class COCODetection(data.Dataset):
         # if self.transform is not None:
         #     target = np.array(target)
         #     img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-        #     img = img[:, :, (2, 1, 0)]
         #     target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         #
-        # return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float()
+        # return img, torch.from_numpy(target).float()
         if self.aux:
             img, gt, h, w, aux_label = self.pull_item(index)
             return img, gt, aux_label
@@ -269,13 +267,12 @@ class COCODetection(data.Dataset):
         if self.transform is not None:
             target = np.array(target)
             img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            img = img[:, :, (2, 1, 0)]
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         if self.aux:
-            return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float(), \
+            return img, torch.from_numpy(target).float(), \
                    height, width, aux_label
         else:
-            return torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(target).float(),\
+            return img, torch.from_numpy(target).float(),\
                    height, width
 
     def __len__(self):

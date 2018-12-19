@@ -160,8 +160,10 @@ class ConvertColor(object):
     def __call__(self, image, boxes=None, labels=None):
         if self.current == 'BGR' and self.transform == 'HSV':
             image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        elif self.current == 'HSV' and self.transform == 'BGR':
-            image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+        elif self.current == 'HSV' and self.transform == 'RGB':
+            image = cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
+        elif self.current == 'BGR' and self.transform == 'RGB':
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         else:
             raise NotImplementedError
         return image, boxes, labels
@@ -375,12 +377,12 @@ class SwapChannels(object):
 class PhotometricDistort(object):
     def __init__(self):
         self.pd = [
-            RandomContrast(),
-            ConvertColor(transform='HSV'),
-            RandomSaturation(),
-            RandomHue(),
-            ConvertColor(current='HSV', transform='BGR'),
-            RandomContrast()
+            RandomContrast(), # BGR
+            ConvertColor(current='BGR', transform='HSV'), # HSV
+            RandomSaturation(), # HSV
+            RandomHue(), # HSV
+            ConvertColor(current='HSV', transform='RGB'), # RGB
+            RandomContrast() # RGB
         ]
         self.rand_brightness = RandomBrightness()
         self.rand_light_noise = RandomLightingNoise()
@@ -397,7 +399,7 @@ class PhotometricDistort(object):
 
 
 class SSDAugmentation(object):
-    def __init__(self, size=300, mean=(104, 117, 123)):
+    def __init__(self, size=300, mean=(123, 117, 104)):
         self.mean = mean
         self.size = size
         self.augment = Compose([
@@ -409,8 +411,22 @@ class SSDAugmentation(object):
             RandomMirror(),
             ToPercentCoords(),
             Resize(self.size),
-            SubtractMeans(self.mean)
+            SubtractMeans(self.mean),
+            ToTensor(),
         ])
 
     def __call__(self, img, boxes, labels):
         return self.augment(img, boxes, labels)
+
+
+class Augmentation(object):
+    def __init__(self, size=300, mean=(123, 117, 104)):
+        self.transform = Compose([
+            ConvertColor(current='BGR', transform='RGB'),
+            Resize(size),
+            SubtractMeans(mean),
+            ToTensor(),
+        ])
+
+    def __call__(self, image, boxes=None, labels=None):
+        return self.transform(image, boxes, labels)

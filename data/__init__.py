@@ -52,5 +52,7 @@ def detection_collate_fedet(batch):
         imgs.append(sample[0])
         targets.append(torch.FloatTensor(sample[1]))
         aux_labels.append(torch.FloatTensor(sample[2]))
-    return torch.stack(imgs, 0), targets, torch.stack(aux_labels, 0)
+    imgs = torch.stack(imgs, 0)
+    aux_labels = torch.stack(aux_labels, 0)
+    return imgs, targets, aux_labels
 

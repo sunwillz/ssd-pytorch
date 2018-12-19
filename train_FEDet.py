@@ -1,5 +1,5 @@
 from data import *
-from utils.augmentations import SSDAugmentation
+from utils.augmentations import SSDAugmentation, Augmentation
 from utils.log_helper import init_log
 from data.coco import COCOAnnotationTransform
 from layers.modules import MultiBoxLoss
@@ -56,7 +56,8 @@ parser.add_argument('--pretrained_model', default='weights/',
                     help='Directory for saving pretrained model')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
-
+parser.add_argument('--use_dataAug', default=True, type=str2bool,
+                    help='use data augmentation trick or not')
 parser.add_argument('--arch', default='FEDet', choices=['SSD', 'FEDet'],
                     help='Architecture: SSD or FEDet')
 parser.add_argument('--use_aux', default=False, type=str2bool,
@@ -89,6 +90,12 @@ def train():
         cfg = ((SSD_VOC_300, FEDet_VOC_300), (SSD_COCO_300, FEDet_COCO_300))[args.dataset == 'COCO'][args.arch == 'FEDet']
     else:
         cfg = ((SSD_VOC_512, FEDet_VOC_512), (SSD_COCO_512, FEDet_COCO_512))[args.dataset == 'COCO'][args.arch == 'FEDet']
+
+    if args.use_dataAug:
+        train_transform = SSDAugmentation(cfg['min_dim'], MEANS)
+    else:
+        train_transform = Augmentation(cfg['min_dim'], MEANS)
+
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
             if not os.path.exists(COCO_ROOT):
@@ -97,7 +104,7 @@ def train():
                            "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
         dataset = COCODetection(root=args.dataset_root, image_sets=[("2017", "train")],
-                                transform=SSDAugmentation(cfg['min_dim'], MEANS),
+                                transform=train_transform,
                                 target_transform=COCOAnnotationTransform(),
                                 aux=args.use_aux)
     elif args.dataset == 'VOC':
@@ -105,8 +112,9 @@ def train():
             parser.error('Must specify dataset if specifying dataset_root')
 
         args.dataset_root = VOC_ROOT
-        dataset = VOCDetection(root=args.dataset_root,image_sets=[('2007', 'trainval'), ('2007', 'test'), ('2012', 'trainval')],
-                               transform=SSDAugmentation(cfg['min_dim'], MEANS),
+        dataset = VOCDetection(root=args.dataset_root,
+                               image_sets=[('2007', 'trainval'), ('2007', 'test'), ('2012', 'trainval')],
+                               transform=train_transform,
                                aux=args.use_aux)
 
     if not os.path.exists(args.save_folder):
