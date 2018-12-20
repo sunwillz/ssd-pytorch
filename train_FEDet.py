@@ -87,9 +87,9 @@ def train():
     init_log('global', logging.INFO)
     logger = logging.getLogger("global")
     if args.img_dim == 300:
-        cfg = ((SSD_VOC_300, FEDet_VOC_300), (SSD_COCO_300, FEDet_COCO_300))[args.dataset == 'COCO'][args.arch == 'FEDet']
+        cfg = (FEDet_VOC_300, FEDet_COCO_300)[args.dataset == 'COCO']
     else:
-        cfg = ((SSD_VOC_512, FEDet_VOC_512), (SSD_COCO_512, FEDet_COCO_512))[args.dataset == 'COCO'][args.arch == 'FEDet']
+        cfg = (FEDet_VOC_512, FEDet_COCO_512)[args.dataset == 'COCO']
 
     if args.use_dataAug:
         train_transform = SSDAugmentation(cfg['min_dim'], MEANS)

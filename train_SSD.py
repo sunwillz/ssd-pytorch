@@ -1,5 +1,5 @@
 from data import *
-from utils.augmentations import SSDAugmentation
+from utils.augmentations import SSDAugmentation, Augmentation
 from data.coco import COCOAnnotationTransform
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
@@ -55,6 +55,8 @@ parser.add_argument('--pretrained_model', default='weights/',
                     help='Directory for saving pretrained model')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
+parser.add_argument('--use_dataAug', default=True, type=str2bool,
+                    help='use data augmentation trick or not')
 
 args = parser.parse_args()
 
@@ -76,6 +78,16 @@ logger = logging.getLogger("global")
 
 
 def train():
+
+    if args.img_dim == 300:
+        cfg = (SSD_VOC_300, SSD_COCO_300)[args.dataset == 'COCO']
+    else:
+        cfg = (SSD_VOC_512, SSD_COCO_512)[args.dataset == 'COCO']
+
+    if args.use_dataAug:
+        train_transform = SSDAugmentation(cfg['min_dim'], MEANS)
+    else:
+        train_transform = Augmentation(cfg['min_dim'], MEANS)
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
             if not os.path.exists(COCO_ROOT):
@@ -83,18 +95,16 @@ def train():
             logger.error("WARNING: Using default COCO dataset_root because " +
                   "--dataset_root was not specified.")
             args.dataset_root = COCO_ROOT
-        cfg = (SSD_COCO_300, SSD_COCO_512)[args.img_dim == 512]
-        dataset = COCODetection(root=args.dataset_root, image_sets=[("2017", "train")],
-                                transform=SSDAugmentation(cfg['min_dim'], MEANS),
+        dataset = COCODetection(root=args.dataset_root, image_sets=[("2017", "train"), ],
+                                transform=train_transform,
                                 target_transform=COCOAnnotationTransform())
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             parser.error('Must specify dataset if specifying dataset_root')
 
-        cfg = (SSD_VOC_300, SSD_VOC_512)[args.img_dim == 512]
         dataset = VOCDetection(root=args.dataset_root,
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
+                               image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
+                               transform=train_transform)
 
     if not os.path.exists(args.save_folder):
         os.makedirs(args.save_folder)
@@ -144,7 +154,7 @@ def train():
 
     epoch_size = len(dataset) // args.batch_size
     logger.info('Training SSD on: %s ' % dataset.name)
-    logger.info('Trainging images size:', len(dataset))
+    logger.info('Trainging images size: %d ' % len(dataset))
     logger.info('Using the specified args:')
     logger.info(args)
 
@@ -204,9 +214,9 @@ def train():
         conf_loss += loss_cls.item()
 
         if iteration % 10 == 0:
-            logger.info('timer: %.4f sec.' % (t1 - t0))
-            logger.info('iter ' + repr(iteration) + '/' + str(cfg['max_iter']) + ' || epoch: ' + str(epoch) + ' || LR: ' +
-                  repr(optimizer.param_groups[0]['lr']) + ' || Loss: %.4f ||' % (loss.item()))
+            logger.info('iter ' + repr(iteration) + '/' + str(cfg['max_iter']) + ' || epoch: ' + str(epoch+1) + ' || LR: ' +
+                  repr(optimizer.param_groups[0]['lr']) + ' || Loss: %.4f || ' % (loss.item()) +
+                  'timer: %.4f sec.' % (t1 - t0))
 
         if args.visdom:
             update_vis_plot(viz, iteration, loss_loc.item(), loss_cls.item(),
@@ -215,7 +225,7 @@ def train():
         if iteration != 0 and iteration % 5000 == 0:
             logger.info('Saving state, iter: %d' % iteration)
             ckpt_path = os.path.join(args.save_folder,
-                                     'ssd' + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(iteration) + '.pth')
+                                     'ssd' + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(iteration) + 'iter.pth')
             torch.save(ssd_net.state_dict(), ckpt_path)
     torch.save(ssd_net.state_dict(),
                os.path.join(args.save_folder, 'model.pth'))

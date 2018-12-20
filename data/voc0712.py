@@ -106,16 +106,20 @@ class VOCDetection(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
+        self.db_name = image_sets[0][0] + image_sets[0][1]
         self.aux = aux
         self._annopath = osp.join('%s', 'Annotations', '%s.xml')
         self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')
         self.imgsetpath = osp.join(VOC_ROOT, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
         self.year = image_sets[0][0]
-        self.devkit_path = osp.join(VOC_ROOT, 'VOC', self.year)
+        self.devkit_path = osp.join(VOC_ROOT, 'VOC_det_results', self.year)
         self.set_type = image_sets[0][1]
         self.ids = list()
         for (year, name) in image_sets:
-            rootpath = osp.join(self.root, 'VOC' + year)
+            if 'test' in name:
+                rootpath = osp.join(self.root, 'VOC' + year+ 'test')
+            else:
+                rootpath = osp.join(self.root, 'VOC' + year)
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
                 self.ids.append((rootpath, line.strip()))
 
@@ -221,19 +225,21 @@ class VOCDetection(data.Dataset):
             os.makedirs(filedir)
         return filedir
 
-    def get_voc_results_file_template(self, image_set, cls):
+    def get_voc_results_file_template(self, image_set, cls, output_dir):
         # VOCdevkit/VOC2007/results/det_test_aeroplane.txt
-        filename = 'det_' + image_set + '_%s.txt' % (cls)
-        filedir = os.path.join(self.devkit_path, 'results')
-        if not os.path.exists(filedir):
-            os.makedirs(filedir)
-        path = os.path.join(filedir, filename)
+        filename = 'comp3_det_' + image_set + '_%s.txt' % (cls)
+        # filedir = os.path.join(self.devkit_path, 'results')
+        if 'test' == image_set:
+            output_dir = os.path.join(output_dir, 'results/VOC2012/Main')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        path = os.path.join(output_dir, filename)
         return path
 
-    def write_voc_results_file(self, all_boxes):
+    def write_voc_results_file(self, all_boxes, output_dir):
         for cls_ind, cls in enumerate(VOC_CLASSES):
             print('Writing {:s} VOC results file'.format(cls))
-            filename = self.get_voc_results_file_template(self.set_type, cls)
+            filename = self.get_voc_results_file_template(self.set_type, cls, output_dir)
             with open(filename, 'wt') as f:
                 for im_ind, index in enumerate(self.ids):
                     dets = all_boxes[cls_ind+1][im_ind]
@@ -259,7 +265,7 @@ class VOCDetection(data.Dataset):
             os.mkdir(output_dir)
 
         for i, cls in enumerate(VOC_CLASSES):
-            filename = self.get_voc_results_file_template(self.set_type, cls)
+            filename = self.get_voc_results_file_template(self.set_type, cls, output_dir)
             rec, prec, ap = voc_eval(
                filename, annopath, self.imgsetpath.format(self.set_type), cls, cachedir,
                ovthresh=0.5, use_07_metric=use_07_metric)
@@ -282,8 +288,9 @@ class VOCDetection(data.Dataset):
 
     def evaluate_detections(self, all_boxes, output_dir=None):
 
-        self.write_voc_results_file(all_boxes)
-        self.do_python_eval(output_dir)
+        self.write_voc_results_file(all_boxes, output_dir)
+        if 'test' not in self.db_name:
+            self.do_python_eval(output_dir)
 
     def evaluate(self, output_dir=None):
         self.do_python_eval(output_dir)

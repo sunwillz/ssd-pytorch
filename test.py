@@ -44,8 +44,6 @@ parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--coco_root', default=COCO_ROOT,
                     help='Location of COCO root directtory')
-parser.add_argument('--reuse', default=False, type=str2bool,
-                    help='evaluate the detection results file')
 
 args = parser.parse_args()
 
@@ -143,7 +141,7 @@ if __name__ == '__main__':
         cfg = ((SSD_VOC_512, FEDet_VOC_512), (SSD_COCO_512, FEDet_COCO_512))[args.dataset == 'COCO'][args.arch == 'FEDet']
     # load data
     if args.dataset == 'VOC':
-        dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
+        dataset = VOCDetection(VOC_ROOT, [('2012', 'test')],
                                BaseTransform(img_dim, dataset_mean))
     elif args.dataset == 'COCO':
         dataset = COCODetection(COCO_ROOT, [('2015', 'test-dev')],
@@ -167,9 +165,5 @@ if __name__ == '__main__':
         net = net.cuda()
         cudnn.benchmark = True
 
-    # evaluation
-    if args.reuse:
-        dataset.evaluate(args.save_folder)
-    else:
-        test_net(args.save_folder, net, args.cuda, dataset, args.top_k,
+    test_net(args.save_folder, net, args.cuda, dataset, args.top_k,
              thresh=args.confidence_threshold)
