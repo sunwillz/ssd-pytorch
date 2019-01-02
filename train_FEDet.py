@@ -7,6 +7,7 @@ from fedet import build_fedet
 import os
 import logging
 import time
+import datetime
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -198,6 +199,7 @@ def train():
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate_fedet,
                                   pin_memory=True)
+    start_training_time = time.time()
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
@@ -268,13 +270,16 @@ def train():
             update_vis_plot(viz, iteration, loss_loc.item(), loss_cls.item(),
                             iter_plot, epoch_plot, 'append')
 
-        if iteration != 0 and iteration % 50000 == 0:
+        if iteration != 0 and iteration % 10000 == 0:
             logger.info('Saving state, iter: %d' % iteration)
             ckpt_path = os.path.join(args.save_folder,
                                      args.arch + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(
                                          iteration) + '.pth')
             torch.save(build_net.state_dict(), ckpt_path)
     torch.save(build_net.state_dict(), os.path.join(args.save_folder, 'model.pth'))
+    total_training_time = time.time()-start_training_time
+    total_time_str = str(datetime.timedelta(seconds=total_training_time))
+    logging.info("Total training time : {} ".format(total_time_str))
 
 
 def adjust_learning_rate(optimizer, gamma, step):

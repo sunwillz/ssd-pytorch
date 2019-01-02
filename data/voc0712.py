@@ -116,8 +116,8 @@ class VOCDetection(data.Dataset):
         self.set_type = image_sets[0][1]
         self.ids = list()
         for (year, name) in image_sets:
-            if 'test' in name:
-                rootpath = osp.join(self.root, 'VOC' + year+ 'test')
+            if year == '2012':
+                rootpath = osp.join(self.root, 'VOC' + year + 'test')
             else:
                 rootpath = osp.join(self.root, 'VOC' + year)
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
@@ -289,7 +289,7 @@ class VOCDetection(data.Dataset):
     def evaluate_detections(self, all_boxes, output_dir=None):
 
         self.write_voc_results_file(all_boxes, output_dir)
-        if 'test' not in self.db_name:
+        if '2012' not in self.db_name:
             self.do_python_eval(output_dir)
 
     def evaluate(self, output_dir=None):

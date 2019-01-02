@@ -9,10 +9,9 @@ python3 train_FEDet.py \
     --start_iter=0 \
     --cuda=True \
     --lr=0.001 \
-    --save_folder=weights/fedet300_voc07+12_ch256 \
-    --arch="FEDet" \
-    --use_dataAug=False \
+    --save_folder=weights/FEDet300_VOC07+12 \
+    --use_dataAug=True \
     --use_aux=True \
     --use_rfm=True \
     --use_feature_fusion=True \
-    #2>&1 | tee log/train_FEDet300_voc07+12_ch128.log &
+    2>&1 | tee log/FEDet300_VOC07+12.log &

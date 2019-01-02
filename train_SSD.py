@@ -222,7 +222,7 @@ def train():
             update_vis_plot(viz, iteration, loss_loc.item(), loss_cls.item(),
                             iter_plot, epoch_plot, 'append')
 
-        if iteration != 0 and iteration % 5000 == 0:
+        if iteration != 0 and iteration % 10000 == 0:
             logger.info('Saving state, iter: %d' % iteration)
             ckpt_path = os.path.join(args.save_folder,
                                      'ssd' + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(iteration) + 'iter.pth')
