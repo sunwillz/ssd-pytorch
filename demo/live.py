@@ -1,10 +1,12 @@
 from __future__ import print_function
-import torch
-from torch.autograd import Variable
-import cv2
-import time
-from imutils.video import FPS, WebcamVideoStream
+
 import argparse
+import time
+
+import cv2
+import torch
+from imutils.video import FPS, WebcamVideoStream
+from torch.autograd import Variable
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detection')
 parser.add_argument('--weights', default='weights/ssd_300_VOC0712.pth',
@@ -72,7 +74,7 @@ if __name__ == '__main__':
     sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
 
     from data import BaseTransform, VOC_CLASSES as labelmap
-    from ssd import build_ssd
+    from models.SSD import build_ssd
 
     net = build_ssd('test', 300, 21)    # initialize SSD
     net.load_state_dict(torch.load(args.weights))

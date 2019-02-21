@@ -5,18 +5,23 @@
 """
 
 from __future__ import print_function
-import torch.backends.cudnn as cudnn
-from torch.autograd import Variable
-from data import *
-from ssd import build_ssd
-from fedet import build_fedet
-from layers.box_utils import nms2
-from utils.log_helper import init_log
+
+import argparse
 import logging
 import os
-import argparse
-import numpy as np
 import pickle
+
+import numpy as np
+import torch.backends.cudnn as cudnn
+from models.FEDet import build_fedet
+# from models.SSD_FFM import build_ssd
+# from models.ssd import build_ssd
+from models.SSD_RFM import build_ssd
+from torch.autograd import Variable
+
+from data import *
+
+from utils.log_helper import init_log
 
 
 def str2bool(v):
@@ -39,7 +44,7 @@ parser.add_argument('-s', '--size', default=300, type=int,
 parser.add_argument('--top_k', default=100, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
-                    help='Use cuda to train model')
+                    help='Use cuda to train models')
 parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--coco_root', default=COCO_ROOT,
@@ -95,7 +100,7 @@ def test_net(save_folder, net, cuda, dataset, top_k, thresh=0.05):
         assert detections.size(1) == num_classes, 'evaluate error!!!'
         for j in range(1, detections.size(1)):
             dets = detections[0, j, :]
-            inds = np.where(dets[:, 0] > thresh)[0]
+            inds = np.where(dets[:, 0].cpu().numpy() > thresh)[0]
             if len(inds) == 0:
                 all_boxes[j][i] = np.empty([0, 5], dtype=np.float32)
                 continue
@@ -163,7 +168,7 @@ if __name__ == '__main__':
     logger.info(net)
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
-    logger.info('Finished loading model!')
+    logger.info('Finished loading models!')
     logger.info('Evaluating dataset size: %d' % len(dataset))
     if args.cuda:
         net = net.cuda()

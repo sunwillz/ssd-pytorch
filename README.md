@@ -171,4 +171,24 @@ We have accumulated the following to-do list, which we hope to complete in the n
 - A huge thank you to [Alex Koltun](https://github.com/alexkoltun) and his team at [Webyclip](webyclip.com) for their help in finishing the data augmentation portion.
 - A list of other great SSD ports that were sources of inspiration (especially the Chainer repo):
   * [Chainer](https://github.com/Hakuyume/chainer-ssd), [Keras](https://github.com/rykov8/ssd_keras), [MXNet](https://github.com/zhreshold/mxnet-ssd), [Tensorflow](https://github.com/balancap/SSD-Tensorflow)
-# ssd-pytorch
+
+---
+
+# FEDet:Feature enhancement single shot detector
+
+### Architecture
+
+![](https://github.com/sunwillz/ssd-pytorch/doc/fedet.pdf)
+
+### Performance
+
+Both methods was trained with Pasval VOC 07trainval+12trainval and MS COCO trainval35k respectively.
+
+
+|method| backbone | Pascal VOC 2007 test| MS COCO minival 5k| MS COCO 2015 test-dev  |
+|:----|:----:|:-----:|:----:|:----:|
+|SSD300|VGG16|77.3|24.7|25.1|
+|SSD512|VGG16|79.8|28.3|28.6|
+|FEDet300|VGG16|79.1|27.2|27.4|
+|FEDet512|VGG16|80.5|31.0|31.3|
+

@@ -1,20 +1,23 @@
-from data import *
-from utils.augmentations import SSDAugmentation, Augmentation
-from data.coco import COCOAnnotationTransform
-from layers.modules import MultiBoxLoss
-from ssd import build_ssd
-from utils.log_helper import init_log
+import argparse
 import logging
 import os
 import time
+
 import torch
-from torch.autograd import Variable
-import torch.nn as nn
-import torch.optim as optim
 import torch.backends.cudnn as cudnn
+import torch.nn as nn
 import torch.nn.init as init
+import torch.optim as optim
 import torch.utils.data as data
-import argparse
+from torch.autograd import Variable
+# from models.ssd import build_ssd
+from models.SSD_RFM import build_ssd
+# from models.SSD_FFM import build_ssd
+from data import *
+from data.coco import COCOAnnotationTransform
+from layers.modules import MultiBoxLoss
+from utils.augmentations import SSDAugmentation, Augmentation
+from utils.log_helper import init_log
 
 
 def str2bool(v):
@@ -28,7 +31,7 @@ parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth',
-                    help='Pretrained base model')
+                    help='Pretrained base models')
 parser.add_argument('--batch_size', default=32, type=int,
                     help='Batch size for training')
 parser.add_argument('--img_dim', default=300, type=int,
@@ -40,7 +43,7 @@ parser.add_argument('--start_iter', default=0, type=int,
 parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
-                    help='Use CUDA to train model')
+                    help='Use CUDA to train models')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
@@ -52,11 +55,13 @@ parser.add_argument('--gamma', default=0.1, type=float,
 parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
 parser.add_argument('--pretrained_model', default='weights/',
-                    help='Directory for saving pretrained model')
+                    help='Directory for saving pretrained models')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 parser.add_argument('--use_dataAug', default=True, type=str2bool,
                     help='use data augmentation trick or not')
+parser.add_argument('--use_aux', default=False, type=str2bool,
+                    help='Use high-level semantic supervisied')
 
 args = parser.parse_args()
 
@@ -97,14 +102,16 @@ def train():
             args.dataset_root = COCO_ROOT
         dataset = COCODetection(root=args.dataset_root, image_sets=[("2017", "train"), ],
                                 transform=train_transform,
-                                target_transform=COCOAnnotationTransform())
+                                target_transform=COCOAnnotationTransform(),
+                                aux=args.use_aux)
     elif args.dataset == 'VOC':
         if args.dataset_root == COCO_ROOT:
             parser.error('Must specify dataset if specifying dataset_root')
 
         dataset = VOCDetection(root=args.dataset_root,
                                image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
-                               transform=train_transform)
+                               transform=train_transform,
+                               aux=args.use_aux)
 
     if not os.path.exists(args.save_folder):
         os.makedirs(args.save_folder)
@@ -144,6 +151,7 @@ def train():
                           weight_decay=args.weight_decay)
     criterion = MultiBoxLoss(cfg, 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
+    criterion2 = nn.BCELoss(size_average=True).cuda()
 
     net.train()
     # loss counters
@@ -168,7 +176,8 @@ def train():
 
     data_loader = data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
-                                  shuffle=True, collate_fn=detection_collate,
+                                  shuffle=True, collate_fn=detection_collate_fedet
+                                                        if args.use_aux else detection_collate,
                                   pin_memory=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
@@ -188,34 +197,58 @@ def train():
 
         # load train data
         try:
-            images, targets = next(batch_iterator)
+            if args.use_aux:
+                images, targets, aux_targets = next(batch_iterator)
+            else:
+                images, targets = next(batch_iterator)
         except StopIteration:
             batch_iterator = iter(data_loader)
-            images, targets = next(batch_iterator)
+            if args.use_aux:
+                images, targets, aux_targets = next(batch_iterator)
+            else:
+                images, targets = next(batch_iterator)
 
         if args.cuda:
             images = Variable(images.cuda())
             targets = [Variable(ann.cuda()) for ann in targets]
+            if args.use_aux:
+                aux_targets = Variable(aux_targets.cuda())
         else:
             images = Variable(images)
             targets = [Variable(ann) for ann in targets]
+            if args.use_aux:
+                aux_targets = Variable(aux_targets.cuda())
         # forward
         t0 = time.time()
         assert images.size(2) == args.img_dim and images.size(3) == args.img_dim
         out = net(images)
         # backprop
         optimizer.zero_grad()
-        loss_loc, loss_cls = criterion(out, targets)
-        loss = loss_loc + loss_cls
-        loss.backward()
-        optimizer.step()
-        t1 = time.time()
-        loc_loss += loss_loc.item()
-        conf_loss += loss_cls.item()
+        if args.use_aux:
+            loss_loc, loss_cls = criterion(out[2:], targets)
+            loss_ssm1 = criterion2(out[0], aux_targets)
+            loss_ssm2 = criterion2(out[1], aux_targets)
+            loss = loss_loc + loss_cls + loss_ssm1.double() + loss_ssm2.double()
+            loss.backward()
+            optimizer.step()
+            t1 = time.time()
+            loc_loss = loss_loc.item()
+            conf_loss = loss_cls.item()
+            ssm_loss = loss_ssm1.item() + loss_ssm2.item()
+        else:
+            loss_loc, loss_cls = criterion(out, targets)
+            loss = loss_loc + loss_cls
+            loss.backward()
+            optimizer.step()
+            t1 = time.time()
+            loc_loss = loss_loc.item()
+            conf_loss = loss_cls.item()
 
         if iteration % 10 == 0:
             logger.info('iter ' + repr(iteration) + '/' + str(cfg['max_iter']) + ' || epoch: ' + str(epoch+1) + ' || LR: ' +
-                  repr(optimizer.param_groups[0]['lr']) + ' || Loss: %.4f || ' % (loss.item()) +
+                  repr(optimizer.param_groups[0]['lr']) +
+                ' || total loss: %.4f || loc Loss: %.4f || conf Loss: %.4f || SSM loss: %.4f ||'
+                    % (loss.item(), loc_loss, conf_loss, ssm_loss) +
                   'timer: %.4f sec.' % (t1 - t0))
 
         if args.visdom:
@@ -228,7 +261,7 @@ def train():
                                      'ssd' + str(args.img_dim) + '_' + str(args.dataset) + '_' + str(iteration) + 'iter.pth')
             torch.save(ssd_net.state_dict(), ckpt_path)
     torch.save(ssd_net.state_dict(),
-               os.path.join(args.save_folder, 'model.pth'))
+               os.path.join(args.save_folder, 'models.pth'))
 
 
 def adjust_learning_rate(optimizer, gamma, step):

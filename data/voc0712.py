@@ -116,7 +116,7 @@ class VOCDetection(data.Dataset):
         self.set_type = image_sets[0][1]
         self.ids = list()
         for (year, name) in image_sets:
-            if year == '2012':
+            if year == '2012' and 'test' in name:
                 rootpath = osp.join(self.root, 'VOC' + year + 'test')
             else:
                 rootpath = osp.join(self.root, 'VOC' + year)
