@@ -178,7 +178,7 @@ We have accumulated the following to-do list, which we hope to complete in the n
 
 ### Architecture
 
-![FEDet](https://github.com/sunwillz/ssd-pytorch/blob/master/doc/fedet.pdf)
+![FEDet](https://github.com/sunwillz/ssd-pytorch/blob/master/doc/fedet.png)
 
 ### Performance
 
